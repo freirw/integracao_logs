@@ -1,9 +1,8 @@
-// Time 2: appcouch.js (Consome logs do MongoDB e armazena métricas no CouchDB)
 const express = require('express');
 const axios = require('axios'); // Para consumir a API do Time 1
-const nano = require('nano')('http://admin:123@localhost:5984'); // Conectar ao CouchDB
+const nano = require('nano')('http://admin:admin@localhost:5984'); // Conectar ao CouchDB
 const bodyParser = require('body-parser');
-const { calculateAverageTimePerPage, calculateUsagePeaks } = require('../analysis/calculateMetrics');
+const { calculateAverageTimePerPage, calculateUsagePeaks, calculateNavigationPatterns } = require('../analysis/calculateMetrics');
 
 const app = express();
 const port = 3003;
@@ -22,31 +21,6 @@ nano.db.create(dbName, (err, body) => {
     console.log(`Banco de dados "${dbName}" pronto para uso.`);
   }
 });
-
-// Função para calcular padrões de navegação
-function calculateNavigationPatterns(logs) {
-  const userPatterns = {};
-
-  logs.forEach((log) => {
-    const { id_usuario, acao, timestamp } = log;
-
-    if (!userPatterns[id_usuario]) {
-      userPatterns[id_usuario] = [];
-    }
-
-    userPatterns[id_usuario].push({ page: acao, timestamp: new Date(timestamp) });
-  });
-
-  // Ordenar os logs por timestamp para cada usuário
-  Object.keys(userPatterns).forEach((userId) => {
-    userPatterns[userId].sort((a, b) => a.timestamp - b.timestamp);
-  });
-
-  return Object.entries(userPatterns).map(([user, pattern]) => ({
-    user,
-    pattern,
-  }));
-}
 
 // Função para consumir logs do MongoDB
 async function fetchLogsFromMongoDB() {
@@ -72,19 +46,16 @@ app.post('/process-logs', async (req, res) => {
     console.log('Logs consumidos do MongoDB:', logs);
 
     // Calcular métricas
-    const averageTime = calculateAverageTimePerPage(logs); // Tempo médio por página
-    const usagePeaks = calculateUsagePeaks(logs); // Picos de uso
-    const navigationPatterns = calculateNavigationPatterns(logs); // Padrões de navegação
+    const averageTime = calculateAverageTimePerPage(logs);
+    const usagePeaks = calculateUsagePeaks(logs);
+    console.log('Dados calculados para usage-peaks:', usagePeaks);
+    const navigationPatterns = calculateNavigationPatterns(logs);
 
     // Preparar documentos para salvar no CouchDB
     const docsToInsert = [
       ...averageTime.map((item) => ({ type: 'average-time', ...item })),
       ...usagePeaks.map((item) => ({ type: 'usage-peak', ...item })),
-      ...navigationPatterns.map((item) => ({
-        type: 'navigation-pattern',
-        user: item.user,
-        pattern: item.pattern,
-      })),
+      ...navigationPatterns.map((item) => ({ type: 'navigation-pattern', ...item })),
     ];
 
     // Salvar métricas no CouchDB

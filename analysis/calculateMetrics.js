@@ -1,56 +1,31 @@
-// calculateMetrics.js
-
+// Função para calcular o tempo médio por página
 const calculateAverageTimePerPage = (logs) => {
   const pageTimes = {};
-
   logs.forEach((log, index) => {
     const { id_usuario, acao: page, timestamp } = log;
-    
-    if (!page || !timestamp) return; // Verifica se há página e timestamp
-
+    if (!page || !timestamp) return;
     const currentTimestamp = new Date(timestamp).getTime();
     const nextLog = logs[index + 1];
+    if (!nextLog || nextLog.id_usuario !== id_usuario) return;
+    const nextTimestamp = nextLog.timestamp ? new Date(nextLog.timestamp).getTime() : null;
+    if (!currentTimestamp || !nextTimestamp || currentTimestamp >= nextTimestamp) return;
 
-    // Verificar se existe um próximo log antes de tentar acessá-lo
-    if (!nextLog || !nextLog.timestamp) return;
-
-    const nextTimestamp = new Date(nextLog.timestamp).getTime();
-
-    // Verificar validade dos timestamps
-    if (!currentTimestamp || !nextTimestamp || currentTimestamp >= nextTimestamp) {
-      return;
-    }
-    
-    // Calcular o tempo gasto entre os logs
-    let timeSpent = nextTimestamp - currentTimestamp;
-
-    // Verificar se o tempo é realista (não mais do que, digamos, 1 hora em milissegundos)
-    if (timeSpent > 3600000) {  // 1 hora em milissegundos
-      console.log(`Tempo absurdo entre logs detectado: ${timeSpent}ms`);
-      return;
-    }
-
+    const timeSpent = nextTimestamp - currentTimestamp;
     if (!pageTimes[page]) {
       pageTimes[page] = { totalTime: 0, count: 0 };
     }
-    
     pageTimes[page].totalTime += timeSpent;
     pageTimes[page].count += 1;
   });
 
-  // Calcula o tempo médio por página
   return Object.entries(pageTimes).map(([page, data]) => ({
     page,
-    averageTime: data.count > 0 ? data.totalTime / data.count : null,
+    averageTime: data.count > 0 ? (data.totalTime / data.count) / 60000 : null, // Milissegundos para minutos
   }));
 };
 
-
-
 // Função para calcular picos de uso
-function calculateUsagePeaks(logs) {
-  // Implemente a lógica para identificar picos de uso
-  // Exemplo simplificado:
+const calculateUsagePeaks = (logs) => {
   const hourlyLogs = logs.reduce((acc, log) => {
     const hour = new Date(log.timestamp).getHours();
     acc[hour] = (acc[hour] || 0) + 1;
@@ -61,11 +36,33 @@ function calculateUsagePeaks(logs) {
     hourlyLogs[hour] > hourlyLogs[peak] ? hour : peak
   );
 
-  return [{ hour: peakHour, count: hourlyLogs[peakHour] }];
-}
+  return [{ hour: peakHour, count: hourlyLogs[peakHour], hours: Object.entries(hourlyLogs) }];
+};
 
-// Exportar as funções
+// Função para calcular padrões de navegação
+const calculateNavigationPatterns = (logs) => {
+  const patterns = {};
+
+  logs.forEach((log) => {
+    const { id_usuario: user, acao: page, timestamp } = log;
+    if (!user || !page || !timestamp) return;
+
+    if (!patterns[user]) {
+      patterns[user] = [];
+    }
+
+    patterns[user].push({ page, timestamp });
+  });
+
+  return Object.entries(patterns).map(([user, pattern]) => ({
+    user,
+    pattern: pattern.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)), // Ordenar por timestamp
+  }));
+};
+
+// Exportar todas as funções
 module.exports = {
   calculateAverageTimePerPage,
   calculateUsagePeaks,
+  calculateNavigationPatterns,
 };
